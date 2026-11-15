@@ -36,6 +36,19 @@ def load_env():
 
 load_env()
 
+
+def env(name, default=""):
+    """Значение переменной без пробелов и случайных кавычек.
+
+    В панелях вроде Railway легко вставить BOT_TOKEN="123:abc" целиком —
+    кавычки ломают запросы к Telegram, поэтому срезаем их.
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().strip('"').strip("'")
+
+
 # Признак «мы на хостинге»: локально ничего этого нет.
 IS_HOSTED = any(
     os.environ.get(key)
@@ -50,14 +63,14 @@ IS_HOSTED = any(
 )
 
 # Локально слушаем только localhost; на хостинге — 0.0.0.0 (иначе прокси не достучится).
-HOST = os.environ.get("HOST") or ("0.0.0.0" if (IS_HOSTED or os.environ.get("PORT")) else "127.0.0.1")
-PORT = int(os.environ.get("PORT", "5000"))
+HOST = env("HOST") or ("0.0.0.0" if (IS_HOSTED or env("PORT")) else "127.0.0.1")
+PORT = int(env("PORT") or "5000")
 
 # DB_PATH позволяет вынести базу на постоянный Volume (например /data/turtlelingo.db).
-DB_PATH = os.environ.get("DB_PATH") or os.path.join(BASE_DIR, "turtlelingo.db")
+DB_PATH = env("DB_PATH") or os.path.join(BASE_DIR, "turtlelingo.db")
 
 # Туннель (localhost.run) нужен только локально. На хостинге есть свой HTTPS-домен.
-DISABLE_TUNNEL = IS_HOSTED or os.environ.get("DISABLE_TUNNEL", "").lower() in ("1", "true", "yes")
+DISABLE_TUNNEL = IS_HOSTED or env("DISABLE_TUNNEL").lower() in ("1", "true", "yes")
 
 if os.path.dirname(DB_PATH):
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)

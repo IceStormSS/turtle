@@ -8,7 +8,24 @@ PORT="${PORT:-5000}"
 export PORT
 
 echo "🐢 TurtleLingo: старт веб-сервера на 0.0.0.0:${PORT} и Telegram-бота"
-echo "   DB_PATH=${DB_PATH:-<локальная папка проекта>}"
+
+# --- проверки конфигурации: лучше упасть сразу с понятным текстом ---
+if [ -z "${BOT_TOKEN:-}" ]; then
+  echo "❌ BOT_TOKEN не задан."
+  echo "   Railway → сервис → Variables → New Variable: BOT_TOKEN = <токен от @BotFather>"
+  echo "   Затем Deployments → Redeploy. Файл .env на сервере не нужен."
+  exit 1
+fi
+
+if [ -n "${DB_PATH:-}" ]; then
+  echo "   DB_PATH=${DB_PATH}"
+elif [ -n "${RAILWAY_ENVIRONMENT:-}" ]; then
+  echo "⚠️ DB_PATH не задан: база ляжет внутрь контейнера и сотрётся при следующем деплое."
+  echo "   Лечится так: Service → Volumes → Add Volume, Mount Path = /data,"
+  echo "   затем Variables: DB_PATH=/data/turtlelingo.db"
+else
+  echo "   DB_PATH не задан — локальный режим, база в папке проекта"
+fi
 
 python app.py &
 WEB_PID=$!

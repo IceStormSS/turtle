@@ -105,8 +105,18 @@ python app.py
 Всё как раньше: `python app.py`, `python bot.py` — `settings.py` по умолчанию
 поднимает `127.0.0.1:5000` и включает туннель, потому что `PORT`/`RAILWAY_*` не заданы.
 
-### Оговорки
+### Если что-то не поднялось
 
+| В логах | Причина | Что делать |
+|---|---|---|
+| `❌ BOT_TOKEN не задан` | нет переменной `BOT_TOKEN` | Variables → `BOT_TOKEN=<токен>` → Redeploy. `.env` на сервере не нужен и в git его класть нельзя |
+| `Не найден BOT_TOKEN` (старый текст) | то же самое | то же самое |
+| `⚠️ DB_PATH не задан` | нет Volume | Volumes → Add Volume, Mount Path `/data`; Variables → `DB_PATH=/data/turtlelingo.db` |
+| `Application failed to respond` | сервис не слушает `PORT` | проверить, что Start Command = `bash start.sh` (из `railway.json`) |
+| Кнопка WebApp ведёт на мёртвый `*.lhr.life` | не задан `WEBAPP_URL` | Variables → `WEBAPP_URL=https://<домен>` → Redeploy |
+| `bot: 401 Unauthorized` | токен отозван/с опечаткой | перевыпустить у `@BotFather`, обновить `BOT_TOKEN` |
+
+### Оговорки
 - `app.py` — стандартная библиотека (`http.server`), **Flask не нужен**; в `requirements.txt` только `requests`.
 - `http.server` — учебный сервер, без graceful shutdown и лимитов; для лабораторной ок, для продакшена взяли бы WSGI-сервер.
 - SQLite на Volume — одна база на оба процесса, запись последовательная; при высокой нагрузке лучше Postgres.

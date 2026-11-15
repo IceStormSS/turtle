@@ -21,7 +21,7 @@ URL_FILE = os.path.join(BASE_DIR, "webapp_url.txt")
 def get_saved_webapp_url():
     """Возвращает сохраненный URL туннеля, если он есть."""
     # Сначала проверяем переменную окружения
-    env_url = os.environ.get("WEBAPP_URL", "").strip()
+    env_url = (os.environ.get("WEBAPP_URL") or "").strip().strip('"').strip("'").rstrip("/")
     if env_url.startswith("https://"):
         return env_url
 

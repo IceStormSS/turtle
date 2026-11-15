@@ -20,7 +20,7 @@ from datetime import date, timedelta
 import requests
 
 from grammar import QUESTIONS_BY_TIER, check_grammar_answer, normalize_answer
-from settings import DB_PATH, DISABLE_TUNNEL, IS_HOSTED, PORT
+from settings import DB_PATH, DISABLE_TUNNEL, IS_HOSTED, PORT, env
 from tunnel import get_saved_webapp_url, run_tunnel_thread
 from words import LEVEL_NAMES, POOLS
 
@@ -34,10 +34,18 @@ WEBAPP_URL = get_saved_webapp_url()
 
 
 # ---------------------------------------------------------------- настройки
-TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+TOKEN = env("BOT_TOKEN")
 if not TOKEN or "вставь" in TOKEN.lower():
-    print("Не найден BOT_TOKEN. Создай файл .env и впиши туда: BOT_TOKEN=твой_токен")
+    if IS_HOSTED:
+        print("❌ Не найден BOT_TOKEN.")
+        print("   Railway → выбери сервис → вкладка Variables → New Variable:")
+        print("   BOT_TOKEN = <токен от @BotFather>")
+        print("   Затем Deployments → Redeploy. Файл .env на сервере не нужен.")
+    else:
+        print("Не найден BOT_TOKEN. Создай файл .env и впиши туда: BOT_TOKEN=твой_токен")
     sys.exit(1)
+if ":" not in TOKEN:
+    log.warning("BOT_TOKEN не похож на токен Telegram (нет «:») — проверь значение в Variables")
 
 API = f"https://api.telegram.org/bot{TOKEN}"
 http = requests.Session()
@@ -750,7 +758,10 @@ def on_callback(cb):
 def main():
     me = api("getMe")
     if not me.get("ok"):
-        print("Не удалось подключиться к Telegram. Проверь токен в .env и интернет.")
+        if IS_HOSTED:
+            print("❌ Telegram не принял BOT_TOKEN. Railway → Variables → BOT_TOKEN (токен от @BotFather), затем Redeploy.")
+        else:
+            print("Не удалось подключиться к Telegram. Проверь токен в .env и интернет.")
         sys.exit(1)
     log.info("Бот запущен: @%s", me["result"]["username"])
 
