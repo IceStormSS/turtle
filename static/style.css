@@ -55,6 +55,7 @@ body {
   color: var(--text-main);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 .container {
@@ -630,6 +631,7 @@ body {
 
 .hand-input {
   flex: 1;
+  min-width: 0;
   padding: 12px 16px;
   border: 2px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -1215,9 +1217,25 @@ body {
 /* ================== АДАПТИВНОСТЬ (МОБИЛЬНЫЕ) ================== */
 @media (max-width: 768px) {
   .main-wrapper {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     padding-top: 16px;
     padding-bottom: 84px;
+  }
+
+  /* Колонка контента не должна растягиваться под длинное содержимое */
+  .content-area,
+  .view-section {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Поле «ответ от руки» + кнопка: на узком экране кнопка уходит вниз */
+  .input-with-btn {
+    flex-wrap: wrap;
+  }
+
+  .input-with-btn .btn {
+    width: 100%;
   }
 
   .side-nav {
@@ -1267,5 +1285,125 @@ body {
     width: 64px;
     height: 64px;
     font-size: 40px;
+  }
+}
+
+/* ================== УЗКИЙ ЭКРАН (Telegram Mini App, телефоны) ==================
+   Хедер не должен вылезать за пределы окна: уменьшаем логотип, прячем
+   подписи «дн.»/«XP» и даём flex-элементам сжиматься (min-width: 0). */
+@media (max-width: 560px) {
+  .container {
+    padding: 0 12px;
+  }
+
+  .header-inner {
+    height: 54px;
+    gap: 8px;
+  }
+
+  .brand {
+    gap: 8px;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  .turtle-logo {
+    width: 30px;
+    height: 30px;
+    font-size: 17px;
+    flex-shrink: 0;
+  }
+
+  .brand-text {
+    min-width: 0;
+  }
+
+  .brand-title {
+    font-size: 15px;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .brand-tagline {
+    display: none;
+  }
+
+  .user-stats {
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .stat-pill {
+    padding: 4px 8px;
+    font-size: 12px;
+    gap: 3px;
+    border-width: 1px;
+  }
+
+  /* «дн.» и «XP» на узком экране лишние — остаются иконка и число */
+  .stat-pill .stat-lbl {
+    display: none;
+  }
+
+  .stat-pill .stat-icon {
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .stat-pill .stat-val {
+    font-size: 12px;
+  }
+
+  .exercise-card {
+    padding: 16px;
+  }
+
+  .exercise-header {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .progress-counter {
+    min-width: 44px;
+    font-size: 12px;
+  }
+
+  .question-prompt {
+    font-size: 17px;
+  }
+
+  .target-sentence {
+    padding: 14px 16px;
+    font-size: 18px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .handwriting-box {
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  .turtle-logo {
+    width: 26px;
+    height: 26px;
+    font-size: 15px;
+  }
+
+  .brand-title {
+    font-size: 13px;
+  }
+
+  .user-stats {
+    gap: 4px;
+  }
+
+  .stat-pill {
+    padding: 3px 6px;
+    font-size: 11px;
+    gap: 2px;
   }
 }
