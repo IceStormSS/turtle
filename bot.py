@@ -19,6 +19,7 @@ from datetime import date, timedelta
 
 import requests
 
+from exercises import pick_distractors
 from grammar import QUESTIONS_BY_TIER, check_grammar_answer, normalize_answer
 from settings import DB_PATH, DISABLE_TUNNEL, IS_HOSTED, PORT, env
 from tunnel import get_saved_webapp_url, run_tunnel_thread
@@ -197,21 +198,20 @@ def progress_bar(done, total):
 
 # ---------------------------------------------------------------- упражнения
 def distractors(word, field, n=3, same_pos=False):
-    pool = POOLS[word["pool"]]
-    cands = [w for w in pool if w["key"] != word["key"]]
-    if same_pos:
-        same = [w for w in cands if w["pos"] == word["pos"]]
-        if len(same) >= n:
-            cands = same
-    random.shuffle(cands)
-    out, seen = [], {word[field]}
-    for w in cands:
-        if w[field] not in seen:
-            out.append(w[field])
-            seen.add(w[field])
-        if len(out) == n:
-            break
-    return out
+    if field == "en":
+        cands = [w["en"] for p in POOLS.values() for w in p if w["key"] != word["key"]]
+        if same_pos:
+            same = [
+                w["en"]
+                for w in POOLS[word["pool"]]
+                if w["pos"] == word["pos"] and w["key"] != word["key"]
+            ]
+            if len(same) >= n:
+                cands = same
+        return pick_distractors(word["en"], cands, n, lang="en")
+
+    cands = [w["ru"] for w in POOLS[word["pool"]] if w["key"] != word["key"]]
+    return pick_distractors(word["ru"], cands, n, lang="ru")
 
 
 def make_exercise(word, kind):

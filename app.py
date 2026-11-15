@@ -24,6 +24,7 @@ from grammar import (
     check_grammar_answer,
     normalize_answer,
 )
+from exercises import pick_distractors
 from settings import DB_PATH, HOST, IS_HOSTED, PORT
 from words import LEVEL_NAMES, POOLS
 
@@ -94,8 +95,7 @@ def make_vocab_test_exercise(word):
     correct = word["ru"]
     pool = POOLS[word["pool"]]
     distractors = [w["ru"] for w in pool if w["key"] != word["key"] and w["ru"] != correct]
-    random.shuffle(distractors)
-    options = [correct] + distractors[:3]
+    options = [correct] + pick_distractors(correct, distractors, 3, lang="ru")
     random.shuffle(options)
 
     # Принимаемые варианты ввода от руки
@@ -193,8 +193,7 @@ def generate_lesson_for_user(user):
         if kind == "en2ru":
             correct = w["ru"]
             cands = [x["ru"] for x in POOLS[w["pool"]] if x["ru"] != correct]
-            random.shuffle(cands)
-            opts = [correct] + cands[:3]
+            opts = [correct] + pick_distractors(correct, cands, 3, lang="ru")
             random.shuffle(opts)
             ex = {
                 "question": f"Как переводится слово «{w['en']}»?",
@@ -204,9 +203,8 @@ def generate_lesson_for_user(user):
             }
         elif kind == "ru2en":
             correct = w["en"]
-            cands = [x["en"] for x in POOLS[w["pool"]] if x["en"] != correct]
-            random.shuffle(cands)
-            opts = [correct] + cands[:3]
+            cands = [x["en"] for p in POOLS.values() for x in p if x["key"] != w["key"]]
+            opts = [correct] + pick_distractors(correct, cands, 3, lang="en")
             random.shuffle(opts)
             ex = {
                 "question": f"Как по-английски «{w['ru']}»?",
@@ -218,9 +216,8 @@ def generate_lesson_for_user(user):
             correct = w["en"]
             same_pos = [x["en"] for x in POOLS[w["pool"]] if x["pos"] == w["pos"] and x["en"] != correct]
             if len(same_pos) < 3:
-                same_pos = [x["en"] for x in POOLS[w["pool"]] if x["en"] != correct]
-            random.shuffle(same_pos)
-            opts = [correct] + same_pos[:3]
+                same_pos = [x["en"] for p in POOLS.values() for x in p if x["key"] != w["key"]]
+            opts = [correct] + pick_distractors(correct, same_pos, 3, lang="en")
             random.shuffle(opts)
             ex = {
                 "question": "Вставь пропущенное слово в предложение:",
