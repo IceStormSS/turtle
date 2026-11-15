@@ -11,11 +11,21 @@ import subprocess
 import threading
 import time
 
+from urllib.parse import urlparse
+
 from settings import IS_HOSTED
 
 log = logging.getLogger("turtlelingo.tunnel")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 URL_FILE = os.path.join(BASE_DIR, "webapp_url.txt")
+
+# Домены временных туннелей: живут только пока запущен ssh-процесс.
+TUNNEL_DOMAINS = ("lhr.life", "localhost.run", "trycloudflare.com", "ngrok-free.app", "ngrok.io")
+
+
+def _is_dead_tunnel(url):
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == d or host.endswith("." + d) for d in TUNNEL_DOMAINS)
 
 
 def get_saved_webapp_url():
@@ -23,6 +33,13 @@ def get_saved_webapp_url():
     # Сначала проверяем переменную окружения
     env_url = (os.environ.get("WEBAPP_URL") or "").strip().strip('"').strip("'").rstrip("/")
     if env_url.startswith("https://"):
+        if IS_HOSTED and _is_dead_tunnel(env_url):
+            log.error(
+                "WEBAPP_URL=%s — это временный туннель, на хостинге он мёртв "
+                "(Telegram покажет «no tunnel»). Укажи Railway-домен в Variables.",
+                env_url,
+            )
+            return None
         return env_url
 
     # Файл — артефакт локального туннеля. На хостинге он неактуален,

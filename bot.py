@@ -783,11 +783,17 @@ def main():
     # 2. Регистрация кнопки меню Telegram WebApp (рядом с полем ввода)
     url = get_webapp_url()
     if url:
+        log.info("Кнопка WebApp ведёт на %s", url)
         api("setChatMenuButton", menu_button={"type": "web_app", "text": "Приложение", "web_app": {"url": url}})
     elif not IS_HOSTED:
         log.warning("WEBAPP_URL не задан — кнопка WebApp появится после старта туннеля")
     else:
-        log.warning("WEBAPP_URL не задан — задай его в Variables (Railway), иначе кнопки WebApp не будет")
+        log.error(
+            "WEBAPP_URL не задан или указывает на мёртвый туннель. Railway → Variables → "
+            "WEBAPP_URL=https://<домен>.up.railway.app, затем Redeploy."
+        )
+        # Снимаем старую (возможно, битую) кнопку, чтобы никто не попадал на «no tunnel».
+        api("setChatMenuButton", menu_button={"type": "default"})
 
     def on_tunnel_ready(ready_url):
         global WEBAPP_URL
