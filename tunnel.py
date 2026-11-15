@@ -23,6 +23,18 @@ URL_FILE = os.path.join(BASE_DIR, "webapp_url.txt")
 TUNNEL_DOMAINS = ("lhr.life", "localhost.run", "trycloudflare.com", "ngrok-free.app", "ngrok.io")
 
 
+def _normalize_url(raw):
+    """Приводит адрес к виду https://host — люди часто копируют домен без схемы."""
+    url = (raw or "").strip().strip('"').strip("'").rstrip("/")
+    if not url:
+        return ""
+    if url.startswith("//"):
+        return "https:" + url
+    if "://" not in url:
+        return "https://" + url
+    return url
+
+
 def _is_dead_tunnel(url):
     host = (urlparse(url).hostname or "").lower()
     return any(host == d or host.endswith("." + d) for d in TUNNEL_DOMAINS)
@@ -31,7 +43,10 @@ def _is_dead_tunnel(url):
 def get_saved_webapp_url():
     """Возвращает сохраненный URL туннеля, если он есть."""
     # Сначала проверяем переменную окружения
-    env_url = (os.environ.get("WEBAPP_URL") or "").strip().strip('"').strip("'").rstrip("/")
+    env_url = _normalize_url(os.environ.get("WEBAPP_URL"))
+    if IS_HOSTED and env_url.startswith("http://"):
+        log.warning("WEBAPP_URL указан с http:// — Telegram требует https://, исправляю автоматически")
+        env_url = "https://" + env_url[len("http://"):]
     if env_url.startswith("https://"):
         if IS_HOSTED and _is_dead_tunnel(env_url):
             log.error(
@@ -51,7 +66,7 @@ def get_saved_webapp_url():
     if os.path.exists(URL_FILE):
         try:
             with open(URL_FILE, "r", encoding="utf-8") as f:
-                url = f.read().strip()
+                url = _normalize_url(f.read())
                 if url.startswith("https://"):
                     return url
         except Exception:
