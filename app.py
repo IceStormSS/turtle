@@ -90,13 +90,17 @@ def get_all_words_flat():
 
 
 # ---------------------------------------------------------------- Генерация заданий
-def make_vocab_test_exercise(word):
+def make_vocab_test_exercise(word, usage=None, used=None):
     # Вопрос по слову с предложением
     correct = word["ru"]
     pool = POOLS[word["pool"]]
     distractors = [w["ru"] for w in pool if w["key"] != word["key"] and w["ru"] != correct]
-    options = [correct] + pick_distractors(correct, distractors, 3, lang="ru")
+    options = [correct] + pick_distractors(correct, distractors, 3, lang="ru", usage=usage, avoid=used)
     random.shuffle(options)
+    if used is not None:
+        used.update(o.lower() for o in options)
+    if usage is not None:
+        usage[correct.lower()] = usage.get(correct.lower(), 0) + 1
 
     # Принимаемые варианты ввода от руки
     accepted = [
@@ -128,6 +132,8 @@ def make_vocab_test_exercise(word):
 def generate_placement_test():
     """Формирует тест из 12 вопросов: по 2 на грамматические окончания + 1 на слово в контексте для каждого уровня (A1, A2, B1, B2)."""
     questions = []
+    usage = {}
+    used = set()
     for tier in range(1, 5):
         # 2 вопроса на грамматику и окончания
         tier_grammar = QUESTIONS_BY_TIER.get(tier, [])
@@ -157,7 +163,7 @@ def generate_placement_test():
 
         # 1 вопрос на слово в контексте
         word = random.choice(POOLS[tier])
-        questions.append(make_vocab_test_exercise(word))
+        questions.append(make_vocab_test_exercise(word, usage, used))
 
     return questions
 
@@ -187,13 +193,24 @@ def generate_lesson_for_user(user):
     # Формируем упражнения
     queue = []
     kinds = ["en2ru", "gap", "ru2en"]
+    # Счётчик и список показанных вариантов: внутри урока слова не повторяются
+    usage = {}
+    # Заранее исключаем из вариантов все правильные ответы этого урока:
+    # один и тот же перевод не должен быть ответом в одном задании и отвлекающим в другом
+    answer_for = {}
+    for i, w in enumerate(words):
+        answer_for[w["key"]] = w["ru"] if kinds[i % 3] == "en2ru" else w["en"]
+    used = {v.lower() for v in answer_for.values()}
 
     for i, w in enumerate(words):
         kind = kinds[i % 3]
         if kind == "en2ru":
             correct = w["ru"]
             cands = [x["ru"] for x in POOLS[w["pool"]] if x["ru"] != correct]
-            opts = [correct] + pick_distractors(correct, cands, 3, lang="ru")
+            if len([c for c in cands if c.lower() not in used]) < 3:
+                # в своём уровне закончились свежие слова — берём из соседних
+                cands += [x["ru"] for p in range(5) if p != w["pool"] for x in POOLS[p]]
+            opts = [correct] + pick_distractors(correct, cands, 3, lang="ru", usage=usage, avoid=used)
             random.shuffle(opts)
             ex = {
                 "question": f"Как переводится слово «{w['en']}»?",
@@ -204,7 +221,7 @@ def generate_lesson_for_user(user):
         elif kind == "ru2en":
             correct = w["en"]
             cands = [x["en"] for p in POOLS.values() for x in p if x["key"] != w["key"]]
-            opts = [correct] + pick_distractors(correct, cands, 3, lang="en")
+            opts = [correct] + pick_distractors(correct, cands, 3, lang="en", usage=usage, avoid=used)
             random.shuffle(opts)
             ex = {
                 "question": f"Как по-английски «{w['ru']}»?",
@@ -215,9 +232,9 @@ def generate_lesson_for_user(user):
         else:  # gap
             correct = w["en"]
             same_pos = [x["en"] for x in POOLS[w["pool"]] if x["pos"] == w["pos"] and x["en"] != correct]
-            if len(same_pos) < 3:
+            if len(same_pos) < 3 or len([c for c in same_pos if c.lower() not in used]) < 3:
                 same_pos = [x["en"] for p in POOLS.values() for x in p if x["key"] != w["key"]]
-            opts = [correct] + pick_distractors(correct, same_pos, 3, lang="en")
+            opts = [correct] + pick_distractors(correct, same_pos, 3, lang="en", usage=usage, avoid=used)
             random.shuffle(opts)
             ex = {
                 "question": "Вставь пропущенное слово в предложение:",
@@ -225,6 +242,10 @@ def generate_lesson_for_user(user):
                 "options": opts,
                 "correct": opts.index(correct),
             }
+
+        # все варианты этого задания считаем «использованными»
+        used.update(o.lower() for o in opts)
+        usage[correct.lower()] = usage.get(correct.lower(), 0) + 1
 
         queue.append({
             "word": w,

@@ -197,32 +197,36 @@ def progress_bar(done, total):
 
 
 # ---------------------------------------------------------------- упражнения
-def distractors(word, field, n=3, same_pos=False):
+def distractors(word, field, n=3, same_pos=False, usage=None, used=None):
+    all_words = [w for p in POOLS.values() for w in p]
     if field == "en":
-        cands = [w["en"] for p in POOLS.values() for w in p if w["key"] != word["key"]]
+        cands = [w["en"] for w in all_words if w["key"] != word["key"]]
         if same_pos:
             same = [
                 w["en"]
                 for w in POOLS[word["pool"]]
                 if w["pos"] == word["pos"] and w["key"] != word["key"]
             ]
-            if len(same) >= n:
+            if len(same) >= n and (used is None or len([c for c in same if c.lower() not in used]) >= n):
                 cands = same
-        return pick_distractors(word["en"], cands, n, lang="en")
+        return pick_distractors(word["en"], cands, n, lang="en", usage=usage, avoid=used)
 
     cands = [w["ru"] for w in POOLS[word["pool"]] if w["key"] != word["key"]]
-    return pick_distractors(word["ru"], cands, n, lang="ru")
+    if used is not None and len([c for c in cands if c.lower() not in used]) < n:
+        # в своём уровне закончились свежие слова — берём из остальных
+        cands += [w["ru"] for w in all_words if w["pool"] != word["pool"]]
+    return pick_distractors(word["ru"], cands, n, lang="ru", usage=usage, avoid=used)
 
 
-def make_exercise(word, kind):
+def make_exercise(word, kind, usage=None, used=None):
     if kind == "en2ru":
         text = f"Как переводится слово <b>{esc(word['en'])}</b>?"
         correct = word["ru"]
-        options = [correct] + distractors(word, "ru")
+        options = [correct] + distractors(word, "ru", usage=usage, used=used)
     elif kind == "ru2en":
         text = f"Как по-английски: <b>{esc(word['ru'])}</b>?"
         correct = word["en"]
-        options = [correct] + distractors(word, "en")
+        options = [correct] + distractors(word, "en", usage=usage, used=used)
     else:  # gap
         text = (
             "Вставь пропущенное слово в предложение:\n\n"
@@ -230,8 +234,12 @@ def make_exercise(word, kind):
             f"💡 Подсказка: {esc(word['ru'])}"
         )
         correct = word["en"]
-        options = [correct] + distractors(word, "en", same_pos=True)
+        options = [correct] + distractors(word, "en", usage=usage, used=used, same_pos=True)
     random.shuffle(options)
+    if used is not None:
+        used.update(o.lower() for o in options)
+    if usage is not None:
+        usage[correct.lower()] = usage.get(correct.lower(), 0) + 1
     return {"text": text, "options": options, "correct": options.index(correct), "word": word}
 
 
@@ -299,6 +307,8 @@ def start_learning(u, chat_id):
 # ---------------------------------------------------------------- тест уровня
 def start_test(u, chat_id):
     qs = []
+    usage = {}
+    used = set()
     # По 2 вопроса на грамматику и окончания + 1 на слово в контексте для каждого уровня (A1, A2, B1, B2)
     for tier in range(1, 5):
         tier_grammar = QUESTIONS_BY_TIER.get(tier, [])
@@ -323,7 +333,7 @@ def start_test(u, chat_id):
 
         # 1 вопрос на слово в контексте
         word = random.choice(POOLS[tier])
-        ex = make_exercise(word, "gap")
+        ex = make_exercise(word, "gap", usage, used)
         qs.append({
             "tier": tier,
             "kind": "vocab",
@@ -502,6 +512,14 @@ def start_lesson(u, chat_id):
         })
     random.shuffle(queue)
 
+    # Заранее знаем все правильные ответы урока — они не должны попадать
+    # в чужие варианты ответа
+    opt_used = set()
+    for item in queue:
+        if item.get("word"):
+            correct = item["word"]["ru"] if item["kind"] == "en2ru" else item["word"]["en"]
+            opt_used.add(correct.lower())
+
     s = {
         "mode": "lesson",
         "words": words,
@@ -512,6 +530,8 @@ def start_lesson(u, chat_id):
         "done": 0,
         "total": len(queue),
         "msg": None,
+        "opt_usage": {},
+        "opt_used": opt_used,
     }
     sessions[u["id"]] = s
     lines = "\n".join(
@@ -549,7 +569,12 @@ def show_question(uid, chat_id, new_message=False):
             "correct": opts.index(correct_val),
         }
     else:
-        ex = make_exercise(item["word"], item["kind"])
+        ex = make_exercise(
+            item["word"],
+            item["kind"],
+            s.setdefault("opt_usage", {}),
+            s.setdefault("opt_used", set()),
+        )
 
     s["cur"] = {"item": item, "ex": ex}
     text = (

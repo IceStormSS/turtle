@@ -216,13 +216,23 @@ def spelling_similarity(a, b):
     )
 
 
-def pick_distractors(correct, candidates, count=3, lang="en", alike_count=2):
+def pick_distractors(correct, candidates, count=3, lang="en", alike_count=2, usage=None, avoid=None):
     """Возвращает `count` неверных вариантов, начиная с похожих по звучанию.
 
     `candidates` — слова из словаря (правильные ответы других заданий).
     При `lang="en"` в варианты добавляются «ловушки» из групп похожих слов,
     даже если их нет в словаре курса.
+
+    `usage` — необязательный словарь {слово: сколько раз уже было вариантом}.
+    Слова с меньшим счётчиком выбираются первыми, поэтому внутри одного урока
+    одни и те же варианты не повторяются. Счётчик обновляется на месте.
+
+    `avoid` — слова, которые уже показывали в этом уроке. Они не попадут в
+    ответ, пока есть другие подходящие варианты.
     """
+    if usage is None:
+        usage = {}
+    avoid = {w.lower() for w in (avoid or ())}
     correct = (correct or "").strip()
     if not correct:
         return []
@@ -242,25 +252,38 @@ def pick_distractors(correct, candidates, count=3, lang="en", alike_count=2):
 
     if lang == "en":
         traps = [w for w in sound_alikes(correct) if w not in seen and len(w) > 1]
-        # сначала самые похожие по написанию (they -> then/thank/these),
-        # потом немного случайности, чтобы варианты не повторялись
-        traps.sort(key=lambda w: spelling_similarity(correct, w), reverse=True)
-        head = traps[: max(alike_count * 2, alike_count)]
+        fresh = [w for w in traps if w.lower() not in avoid]
+        # если свежих «ловушек» не осталось — лучше взять обычные слова,
+        # чем повторять те же варианты второй раз
+        traps = fresh
+        # сначала слова, которые ещё не были вариантами, затем самые похожие
+        # по написанию (they -> then/thank/these)
+        traps.sort(key=lambda w: (usage.get(w.lower(), 0), -spelling_similarity(correct, w)))
+        head = traps[: max(alike_count * 3, 6)]
         random.shuffle(head)
         for trap in head[:alike_count]:
             chosen.append(trap)
             seen.add(trap.lower())
 
-    # добираем словами из словаря: сначала похожие по написанию, но без жёсткого порядка
+    # добираем словами из словаря: сначала неиспользованные, потом похожие по написанию
     rest = [w for w in pool if w.lower() not in seen]
-    rest.sort(key=lambda w: spelling_similarity(correct, w), reverse=True)
-    head = rest[:6]
+    need = count - len(chosen)
+    fresh = [w for w in rest if w.lower() not in avoid]
+    if len(fresh) >= need:
+        rest = fresh
+    rest.sort(key=lambda w: (usage.get(w.lower(), 0), -spelling_similarity(correct, w)))
+    head = rest[:8]
     random.shuffle(head)
-    rest = head + rest[6:]
+    rest = head + rest[8:]
     for word in rest:
         if len(chosen) >= count:
             break
         chosen.append(word)
         seen.add(word.lower())
+
+    # запоминаем, что эти варианты уже показывали
+    for word in chosen:
+        key = word.lower()
+        usage[key] = usage.get(key, 0) + 1
 
     return chosen[:count]
