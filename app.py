@@ -6,6 +6,8 @@
 """
 
 import http.server
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -14,6 +16,7 @@ import re
 import socketserver
 import sqlite3
 import sys
+import time
 import urllib.parse
 import webbrowser
 from datetime import date, timedelta
@@ -25,7 +28,7 @@ from grammar import (
     normalize_answer,
 )
 from exercises import pick_distractors
-from settings import DB_PATH, HOST, IS_HOSTED, PORT
+from settings import DB_PATH, HOST, IS_HOSTED, PORT, env
 from words import LEVEL_NAMES, POOLS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +37,34 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("turtlelingo_web")
+
+# Токен бота нужен для проверки подписи initData из Telegram Mini App
+BOT_TOKEN = env("BOT_TOKEN")
+
+
+def verify_init_data(init_data, max_age=86400):
+    """Проверяет подпись Telegram и возвращает dict пользователя или None.
+
+    initData приходит из Telegram.WebApp.initData и подписана токеном бота,
+    поэтому подставить чужой id вручную не получится.
+    """
+    if not init_data or not BOT_TOKEN:
+        return None
+    try:
+        data = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+        got_hash = data.pop("hash", "")
+        if not got_hash:
+            return None
+        check = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+        secret = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        calc = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calc, got_hash):
+            return None
+        if time.time() - int(data.get("auth_date", 0)) > max_age:
+            return None
+        return json.loads(data["user"])
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------- База данных
@@ -293,11 +324,43 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def current_user(self):
+        """Пользователь из подписанных данных Telegram (или первый локально)."""
+        tg = verify_init_data(self.headers.get("X-Tg-Init-Data", ""))
+        if tg and "id" in tg:
+            uid = int(tg["id"])
+            name = " ".join(
+                part for part in (tg.get("first_name"), tg.get("last_name")) if part
+            ).strip()
+            name = name or tg.get("username") or "Друг"
+            with db:
+                db.execute(
+                    "INSERT OR IGNORE INTO users(id, name, level, pool, xp, streak, tested) "
+                    "VALUES(?, ?, 2, 2, 0, 0, 0)",
+                    (uid, name),
+                )
+                db.execute(
+                    "UPDATE users SET name=? WHERE id=? AND (name IS NULL OR name <> ?)",
+                    (name, uid, name),
+                )
+            row = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+            return dict(row) if row else None
+
+        if IS_HOSTED:
+            # На хостинге без подписи Telegram работать нельзя: иначе можно
+            # открыть чужой прогресс или сбросить его.
+            self.send_json(
+                {"error": "unauthorized", "detail": "Открой приложение из Telegram"},
+                status=401,
+            )
+            return None
+        return get_current_user()  # локальная отладка в обычном браузере
+
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Tg-Init-Data")
         self.end_headers()
 
     def do_GET(self):
@@ -344,25 +407,11 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
 
         # ================= REST API =================
         if path == "/api/user":
-            params = urllib.parse.parse_qs(url.query)
-            user_id = params.get("id", [None])[0]
-            if user_id:
-                try:
-                    row = db.execute("SELECT * FROM users WHERE id=?", (int(user_id),)).fetchone()
-                    if row:
-                        u = dict(row)
-                        u["learned_count"] = get_learned_count(u["id"])
-                        u["total_words"] = len(get_all_words_flat())
-                        self.send_json(u)
-                        return
-                except Exception:
-                    pass
-
-            u = get_current_user()
-            learned_cnt = get_learned_count(u["id"])
-            total_words = len(get_all_words_flat())
-            u["learned_count"] = learned_cnt
-            u["total_words"] = total_words
+            u = self.current_user()
+            if not u:
+                return
+            u["learned_count"] = get_learned_count(u["id"])
+            u["total_words"] = len(get_all_words_flat())
             self.send_json(u)
             return
 
@@ -372,7 +421,9 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         elif path == "/api/lesson/start":
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             words, queue = generate_lesson_for_user(u)
             self.send_json({"words": words, "queue": queue})
             return
@@ -399,43 +450,44 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
             payload = {}
 
         if path == "/api/user/sync":
-            uid = payload.get("id")
-            name = payload.get("name", "Друг")
-            if uid:
-                with db:
-                    db.execute(
-                        "INSERT OR IGNORE INTO users(id, name, level, pool, xp, streak, tested) VALUES(?, ?, 2, 2, 0, 0, 0)",
-                        (uid, name),
-                    )
-                    db.execute("UPDATE users SET name=? WHERE id=?", (name, uid))
-                row = db.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
-                u = dict(row)
-                u["learned_count"] = get_learned_count(uid)
-                u["total_words"] = len(get_all_words_flat())
-                self.send_json({"ok": True, "user": u})
+            # Данные берём только из подписанного initData, тело запроса не доверяем
+            u = self.current_user()
+            if not u:
                 return
+            u["learned_count"] = get_learned_count(u["id"])
+            u["total_words"] = len(get_all_words_flat())
+            self.send_json({"ok": True, "user": u})
+            return
 
         if path == "/api/user/set-level":
             new_level = int(payload.get("level", 2))
             new_pool = 0 if new_level == 0 else min(new_level + 1, 4)
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             with db:
                 db.execute(
                     "UPDATE users SET level=?, pool=?, tested=1 WHERE id=?",
                     (new_level, new_pool, u["id"]),
                 )
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             u["learned_count"] = get_learned_count(u["id"])
             u["total_words"] = len(get_all_words_flat())
             self.send_json({"ok": True, "user": u})
             return
 
         elif path == "/api/user/reset":
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             with db:
                 db.execute("UPDATE users SET xp=0, streak=0, learned_count=0 WHERE id=?", (u["id"],))
                 db.execute("DELETE FROM learned WHERE user_id=?", (u["id"],))
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             u["learned_count"] = 0
             u["total_words"] = len(get_all_words_flat())
             self.send_json({"ok": True, "user": u})
@@ -466,14 +518,18 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/test/finish":
             level = int(payload.get("level", 2))
             scores = payload.get("scores", {})
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             pool = 0 if level == 0 else min(level + 1, 4)
             with db:
                 db.execute(
                     "UPDATE users SET level=?, pool=?, tested=1 WHERE id=?",
                     (level, pool, u["id"]),
                 )
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             u["learned_count"] = get_learned_count(u["id"])
             u["total_words"] = len(get_all_words_flat())
             self.send_json({"ok": True, "user": u, "scores": scores})
@@ -508,7 +564,9 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/lesson/finish":
             xp_gained = int(payload.get("xp", 0))
             words = payload.get("words", [])
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             uid = u["id"]
 
             with db:
@@ -528,7 +586,9 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
                     (xp_gained, streak, today.isoformat(), uid),
                 )
 
-            u = get_current_user()
+            u = self.current_user()
+            if not u:
+                return
             u["learned_count"] = get_learned_count(uid)
             u["total_words"] = len(get_all_words_flat())
             self.send_json({"ok": True, "user": u})

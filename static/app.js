@@ -25,6 +25,30 @@ const state = {
   currentDictTab: "words",
 };
 
+// ---------------------------------------------------------------- Telegram Mini App
+const tgWebApp = window.Telegram?.WebApp;
+const tgInitData = tgWebApp?.initData || "";
+const tgUser = tgWebApp?.initDataUnsafe?.user;
+
+if (tgWebApp) {
+  try {
+    tgWebApp.ready();
+    tgWebApp.expand();
+  } catch (e) {
+    console.log("TG WebApp init error:", e);
+  }
+}
+
+// Подписанные данные Telegram уходят с каждым запросом к API:
+// сервер сам определяет пользователя по подписи и отдаёт его прогресс.
+const _fetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => {
+  if (tgInitData && typeof url === "string" && url.startsWith("/api/")) {
+    opts.headers = { ...(opts.headers || {}), "X-Tg-Init-Data": tgInitData };
+  }
+  return _fetch(url, opts);
+};
+
 const LEVEL_NAMES = {
   0: "A0 — Начальный 🥚",
   1: "A1 — Базовый 🐣",
@@ -916,36 +940,21 @@ function launchConfetti() {
 
 // ---------------------------------------------------------------- Инициализация и Telegram WebApp
 function initTelegramWebApp() {
-  if (window.Telegram && window.Telegram.WebApp) {
-    const tg = window.Telegram.WebApp;
-    try {
-      tg.ready();
-      tg.expand();
-      if (tg.enableClosingConfirmation) tg.enableClosingConfirmation();
-    } catch (e) {
-      console.log("TG WebApp init error:", e);
-    }
+  // ready()/expand() уже вызваны при загрузке скрипта
+  if (!tgWebApp) return;
+  try {
+    if (tgWebApp.enableClosingConfirmation) tgWebApp.enableClosingConfirmation();
+  } catch (e) {
+    console.log("TG WebApp init error:", e);
+  }
 
-    // Если есть данные пользователя Telegram:
-    if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-      const u = tg.initDataUnsafe.user;
-      const tgName = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "Друг";
-      
-      fetch("/api/user/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: u.id, name: tgName }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.user) {
-            state.user = data.user;
-            updateHeaderStats();
-            if (state.currentTab === "profile") renderProfile();
-          }
-        })
-        .catch((err) => console.warn("TG sync error:", err));
-    }
+  // Пока сервер отвечает, показываем имя из Telegram:
+  // прогресс всё равно берётся с сервера по подписанному initData.
+  if (tgUser) {
+    state.user.name =
+      [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") ||
+      tgUser.username ||
+      "Друг";
   }
 }
 
