@@ -11,6 +11,8 @@ import subprocess
 import threading
 import time
 
+from settings import IS_HOSTED
+
 log = logging.getLogger("turtlelingo.tunnel")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 URL_FILE = os.path.join(BASE_DIR, "webapp_url.txt")
@@ -22,6 +24,11 @@ def get_saved_webapp_url():
     env_url = os.environ.get("WEBAPP_URL", "").strip()
     if env_url.startswith("https://"):
         return env_url
+
+    # Файл — артефакт локального туннеля. На хостинге он неактуален,
+    # иначе в Telegram уедет мёртвая ссылка вида *.lhr.life.
+    if IS_HOSTED:
+        return None
 
     # Затем файл webapp_url.txt
     if os.path.exists(URL_FILE):

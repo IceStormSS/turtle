@@ -35,6 +35,15 @@ Remote уже настроен: `origin` → https://github.com/IceStormSS/turtl
 
 ## Структура
 
-- `app.py` — Flask-веб (порт 5000), `templates/index.html`, `static/style.css`, `static/app.js`
-- `bot.py` — Telegram-бот, `grammar.py` / `words.py` — данные и логика упражнений
-- `tunnel.py` — поднимает cloudflared-туннель и пишет URL в `webapp_url.txt`
+- `app.py` — веб на стандартной библиотеке (`http.server`, порт из `PORT`), `templates/index.html`, `static/style.css`, `static/app.js`
+- `bot.py` — Telegram-бот (long polling), `grammar.py` / `words.py` — данные и логика упражнений
+- `settings.py` — общие настройки: `HOST`, `PORT`, `DB_PATH`, `IS_HOSTED`, `DISABLE_TUNNEL`, загрузка `.env`
+- `tunnel.py` — локальный SSH-туннель localhost.run, пишет URL в `webapp_url.txt` (файл в `.gitignore`); на хостинге отключён
+- Деплой: `start.sh` (веб + бот в одном сервисе, общая база), `railway.json`, Volume на `/data`
+
+## Деплой (Railway)
+
+- Один сервис, а не два: бот и веб пишут в одну SQLite-базу, Volume подключается только к одному сервису.
+- `PORT` даёт платформа, `HOST` на хостинге = `0.0.0.0` (определяется по `RAILWAY_*`/`PORT`).
+- Обязательные Variables: `BOT_TOKEN`, `DB_PATH=/data/turtlelingo.db`, `WEBAPP_URL` (после Generate Domain).
+- Проверка после правок деплоя: `RAILWAY_ENVIRONMENT=production PORT=5055 DB_PATH=$env:TEMP\tl.db python app.py` и curl `/`, `/api/user`, `/api/lesson/start?uid=1`.

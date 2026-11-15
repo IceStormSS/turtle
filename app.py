@@ -24,13 +24,12 @@ from grammar import (
     check_grammar_answer,
     normalize_answer,
 )
+from settings import DB_PATH, HOST, IS_HOSTED, PORT
 from words import LEVEL_NAMES, POOLS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
-DB_PATH = os.path.join(BASE_DIR, "turtlelingo.db")
-PORT = 5000
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("turtlelingo_web")
@@ -38,7 +37,7 @@ log = logging.getLogger("turtlelingo_web")
 
 # ---------------------------------------------------------------- База данных
 def get_db():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
     conn.row_factory = sqlite3.Row
     conn.executescript(
         """
@@ -520,14 +519,14 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
         self.send_error(404, "Endpoint not found")
 
 
-def start_web_server(port=5000):
-    server_address = ("127.0.0.1", port)
+def start_web_server(port=PORT, host=HOST):
+    server_address = (host, port)
 
     class ReusableServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
         allow_reuse_address = True
 
     httpd = ReusableServer(server_address, TurtleHandler)
-    log.info("TurtleLingo веб-сервер слушает на http://127.0.0.1:%s", port)
+    log.info("TurtleLingo веб-сервер слушает на http://%s:%s", host, port)
     try:
         httpd.serve_forever()
     except Exception as e:
@@ -547,20 +546,23 @@ def find_free_port(start_port=5000):
 
 
 def run_server():
-    port = 5000
-    url = f"http://localhost:{port}"
+    port = PORT
 
     print("=" * 60)
     print(f"🐢 TurtleLingo Web App успешно запущено!")
-    print(f"👉 Открой в браузере: {url}")
+    if IS_HOSTED:
+        print(f"👉 Слушаем {HOST}:{port} (внешний домен даёт платформа)")
+    else:
+        print(f"👉 Открой в браузере: http://localhost:{port}")
     print("=" * 60)
 
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+    if not IS_HOSTED:
+        try:
+            webbrowser.open(f"http://localhost:{port}")
+        except Exception:
+            pass
 
-    start_web_server(port)
+    start_web_server(port, HOST)
 
 
 if __name__ == "__main__":

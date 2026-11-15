@@ -20,6 +20,7 @@ from datetime import date, timedelta
 import requests
 
 from grammar import QUESTIONS_BY_TIER, check_grammar_answer, normalize_answer
+from settings import DB_PATH, DISABLE_TUNNEL, IS_HOSTED, PORT
 from tunnel import get_saved_webapp_url, run_tunnel_thread
 from words import LEVEL_NAMES, POOLS
 
@@ -33,19 +34,6 @@ WEBAPP_URL = get_saved_webapp_url()
 
 
 # ---------------------------------------------------------------- настройки
-def load_env():
-    path = os.path.join(BASE_DIR, ".env")
-    if not os.path.exists(path):
-        return
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-load_env()
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 if not TOKEN or "вставь" in TOKEN.lower():
     print("Не найден BOT_TOKEN. Создай файл .env и впиши туда: BOT_TOKEN=твой_токен")
@@ -90,7 +78,7 @@ def edit(chat_id, message_id, text, kb=None):
 
 
 # ---------------------------------------------------------------- база данных
-db = sqlite3.connect(os.path.join(BASE_DIR, "turtlelingo.db"), check_same_thread=False)
+db = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
 db.row_factory = sqlite3.Row
 db.executescript(
     """
@@ -766,23 +754,29 @@ def main():
         sys.exit(1)
     log.info("Бот запущен: @%s", me["result"]["username"])
 
-    # 1. Запуск локального веб-сервера на порту 5000 (если ещё не запущен)
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            port_busy = (s.connect_ex(("127.0.0.1", 5000)) == 0)
-        if not port_busy:
-            import app
-            log.info("Запуск локального веб-сервера TurtleLingo на порту 5000...")
-            t_app = threading.Thread(target=app.start_web_server, args=(5000,), daemon=True)
-            t_app.start()
-            time.sleep(0.5)
-    except Exception as e:
-        log.warning("Ошибка проверки/запуска веб-сервера: %s", e)
+    # 1. Локальный веб-сервер поднимаем только при локальном запуске.
+    # На хостинге app.py работает отдельным процессом (наружу смотрит платформа).
+    if not IS_HOSTED:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                port_busy = (s.connect_ex(("127.0.0.1", PORT)) == 0)
+            if not port_busy:
+                import app
+                log.info("Запуск локального веб-сервера TurtleLingo на порту %s...", PORT)
+                t_app = threading.Thread(target=app.start_web_server, args=(PORT,), daemon=True)
+                t_app.start()
+                time.sleep(0.5)
+        except Exception as e:
+            log.warning("Ошибка проверки/запуска веб-сервера: %s", e)
 
     # 2. Регистрация кнопки меню Telegram WebApp (рядом с полем ввода)
     url = get_webapp_url()
     if url:
         api("setChatMenuButton", menu_button={"type": "web_app", "text": "Приложение", "web_app": {"url": url}})
+    elif not IS_HOSTED:
+        log.warning("WEBAPP_URL не задан — кнопка WebApp появится после старта туннеля")
+    else:
+        log.warning("WEBAPP_URL не задан — задай его в Variables (Railway), иначе кнопки WebApp не будет")
 
     def on_tunnel_ready(ready_url):
         global WEBAPP_URL
@@ -790,8 +784,11 @@ def main():
         log.info("✅ Telegram WebApp подключён: %s", ready_url)
         api("setChatMenuButton", menu_button={"type": "web_app", "text": "Приложение", "web_app": {"url": ready_url}})
 
-    # 3. Запуск SSH-туннеля для получения HTTPS ссылки для Telegram WebApp
-    run_tunnel_thread(port=5000, on_url_ready=on_tunnel_ready)
+    # 3. SSH-туннель нужен только локально. На Railway HTTPS-домен уже есть.
+    if DISABLE_TUNNEL:
+        log.info("Туннель отключён (хостинг/переменная DISABLE_TUNNEL). WEBAPP_URL=%s", url or "не задан")
+    else:
+        run_tunnel_thread(port=PORT, on_url_ready=on_tunnel_ready)
 
     offset = None
     while True:
