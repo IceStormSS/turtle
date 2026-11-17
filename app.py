@@ -556,7 +556,8 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
                     is_correct = (norm == target_en) or (norm == target_ru) or (norm in ru_variants)
 
                 w = item.get("word", {})
-                explanation = f"<b>{w.get('en')}</b> — {w.get('ru')}" if w else ""
+                # Веб-интерфейс вставляет текст как plain text, поэтому без HTML-тегов
+                explanation = f"{w.get('en')} — {w.get('ru')}" if w else ""
 
             self.send_json({"is_correct": is_correct, "explanation": explanation})
             return

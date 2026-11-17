@@ -172,6 +172,12 @@ body {
   background: #a7f3d0;
 }
 
+/* В шапке оставляем только серию дней (🔥), остальная статистика — в профиле */
+.user-stats .xp-pill,
+.user-stats .level-pill {
+  display: none;
+}
+
 .icon-btn {
   width: 38px;
   height: 38px;
@@ -416,6 +422,8 @@ body {
 /* ================== УПРАЖНЕНИЯ И ТЕСТЫ ================== */
 .exercise-card {
   padding: 28px;
+  /* чтобы sticky-хедер не накрывал верх карточки при автопрокрутке */
+  scroll-margin-top: 84px;
 }
 
 .exercise-header {
@@ -663,6 +671,7 @@ body {
   justify-content: space-between;
   gap: 20px;
   animation: slideUp 0.25s ease-out;
+  scroll-margin-top: 84px;
 }
 
 @keyframes slideUp {
@@ -1216,10 +1225,18 @@ body {
 
 /* ================== АДАПТИВНОСТЬ (МОБИЛЬНЫЕ) ================== */
 @media (max-width: 768px) {
+  /* Нижняя навигация фиксирована — при автопрокрутке к кнопке «Дальше»
+     оставляем место, чтобы она не пряталась под панелью */
+  html {
+    scroll-padding-bottom: 100px;
+  }
+
   .main-wrapper {
     grid-template-columns: minmax(0, 1fr);
     padding-top: 16px;
-    padding-bottom: 84px;
+    /* место под фиксированную нижнюю навигацию: чтобы кнопка «Дальше»
+       не оказывалась под ней */
+    padding-bottom: 120px;
   }
 
   /* Колонка контента не должна растягиваться под длинное содержимое */
@@ -1292,8 +1309,15 @@ body {
    Хедер не должен вылезать за пределы окна: уменьшаем логотип, прячем
    подписи «дн.»/«XP» и даём flex-элементам сжиматься (min-width: 0). */
 @media (max-width: 560px) {
+  /* Навигация на узком экране выше (подписи в две строки) */
+  html {
+    scroll-padding-bottom: 120px;
+  }
+
   .container {
-    padding: 0 12px;
+    /* только по бокам: вертикальные отступы задаёт .main-wrapper */
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .header-inner {
@@ -1358,6 +1382,7 @@ body {
 
   .exercise-card {
     padding: 16px;
+    scroll-margin-top: 66px;
   }
 
   .exercise-header {
@@ -1383,6 +1408,21 @@ body {
 
   .handwriting-box {
     padding: 12px 14px;
+  }
+
+  .feedback-drawer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .feedback-drawer .btn {
+    width: 100%;
+  }
+
+  .feedback-icon {
+    font-size: 26px;
   }
 }
 

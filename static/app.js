@@ -263,6 +263,12 @@ function renderTestQuestion() {
 
   // Скрыть панель обратной связи
   document.getElementById("test-feedback").style.display = "none";
+
+  // Новый вопрос теста начинаем с его начала
+  requestAnimationFrame(() => {
+    const card = document.getElementById("test-runner");
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 async function submitTestAnswer(choice) {
@@ -329,6 +335,13 @@ async function submitTestAnswer(choice) {
   document.getElementById("test-fb-title").textContent = isCorrect ? "Верно!" : "Не совсем";
   document.getElementById("test-fb-desc").textContent = explanation;
   fb.style.display = "flex";
+
+  // Прокручиваем к панели с кнопкой «Следующий вопрос»
+  requestAnimationFrame(() => {
+    fb.scrollIntoView({ behavior: "smooth", block: "center" });
+    const nextBtn = document.getElementById("test-next-btn");
+    if (nextBtn) nextBtn.focus({ preventScroll: true });
+  });
 }
 
 function submitTestHandwritten() {
@@ -542,6 +555,11 @@ function renderLessonQuestion() {
   };
 
   document.getElementById("lesson-feedback").style.display = "none";
+
+  // Новый вопрос начинаем с его начала, а не с места, где была кнопка «Дальше»
+  requestAnimationFrame(() => {
+    document.getElementById("lesson-runner").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 async function submitLessonAnswer(choice) {
@@ -605,6 +623,13 @@ async function submitLessonAnswer(choice) {
   document.getElementById("lesson-fb-title").textContent = isCorrect ? "Правильно!" : "Правильный ответ:";
   document.getElementById("lesson-fb-desc").textContent = explanation || (item.word ? `${item.word.en} — ${item.word.ru}` : "");
   fb.style.display = "flex";
+
+  // Прокручиваем к панели с кнопкой «Дальше», чтобы не искать её вручную
+  requestAnimationFrame(() => {
+    fb.scrollIntoView({ behavior: "smooth", block: "center" });
+    const nextBtn = document.getElementById("lesson-next-btn");
+    if (nextBtn) nextBtn.focus({ preventScroll: true });
+  });
 }
 
 function submitLessonHandwritten() {
