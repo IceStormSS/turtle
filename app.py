@@ -445,7 +445,7 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/api/health":
             # Диагностика: жив ли бот (он пишет пульс в ту же базу)
-            info = {"ok": True, "build": BUILD, "bot": {"alive": False, "last_seen": None, "age_seconds": None, "username": None}}
+            info = {"ok": True, "build": BUILD, "bot_token_configured": bool(BOT_TOKEN), "bot": {"alive": False, "last_seen": None, "age_seconds": None, "username": None, "error": None}}
             try:
                 rows = {
                     r["key"]: r["value"]
@@ -458,6 +458,7 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
                     "last_seen": last or None,
                     "age_seconds": age,
                     "username": rows.get("bot_username"),
+                    "error": rows.get("bot_error"),
                 }
             except Exception:
                 pass

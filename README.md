@@ -118,13 +118,16 @@ python app.py
 `GET /api/health` отдаёт метку сборки и пульс бота:
 
 ```json
-{"ok": true, "build": "2026-11-19.1",
- "bot": {"alive": true, "age_seconds": 12, "username": "turtlelingo_bot"},
+{"ok": true, "build": "2026-11-19.1", "bot_token_configured": true,
+ "bot": {"alive": true, "age_seconds": 12, "username": "turtlelingo_bot", "error": null},
  "users": 3}
 ```
 
 - `bot.alive = false` дольше 90 секунд → бот не опрашивает Telegram
   (нет `BOT_TOKEN`, конфликт двух экземпляров или сервис упал) — смотреть Logs;
+- `bot.error` — последняя причина, по которой бот не смог стартовать
+  (например `getMe: Unauthorized`);
+- `bot_token_configured = false` → переменная `BOT_TOKEN` не задана;
 - `build` — если на хостинге старая метка, деплой не доехал: Deployments → Redeploy;
 - `/api/health` доступен без подписи Telegram (это только состояние, без личных данных).
 

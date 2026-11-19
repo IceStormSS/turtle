@@ -87,31 +87,36 @@ def edit(chat_id, message_id, text, kb=None):
 
 
 # ---------------------------------------------------------------- база данных
-db = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
-db.row_factory = sqlite3.Row
-db.executescript(
-    """
-    CREATE TABLE IF NOT EXISTS users(
-        id INTEGER PRIMARY KEY,
-        name TEXT,
-        level INTEGER DEFAULT 2,
-        pool INTEGER DEFAULT 2,
-        xp INTEGER DEFAULT 0,
-        streak INTEGER DEFAULT 0,
-        last_day TEXT,
-        tested INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS learned(
-        user_id INTEGER,
-        key TEXT,
-        PRIMARY KEY(user_id, key)
-    );
-    CREATE TABLE IF NOT EXISTS meta(
-        key TEXT PRIMARY KEY,
-        value TEXT
-    );
-    """
-)
+try:
+    db = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
+    db.row_factory = sqlite3.Row
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users(
+            id INTEGER PRIMARY KEY,
+            name TEXT,
+            level INTEGER DEFAULT 2,
+            pool INTEGER DEFAULT 2,
+            xp INTEGER DEFAULT 0,
+            streak INTEGER DEFAULT 0,
+            last_day TEXT,
+            tested INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS learned(
+            user_id INTEGER,
+            key TEXT,
+            PRIMARY KEY(user_id, key)
+        );
+        CREATE TABLE IF NOT EXISTS meta(
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        """
+    )
+except Exception as e:
+    print(f"❌ Не удалось открыть базу {DB_PATH}: {e}")
+    print("   Проверь Volume и DB_PATH (на Railway: /data/turtlelingo.db).")
+    raise
 
 
 def set_meta(key, value):
@@ -812,11 +817,14 @@ def main():
         log.warning("getMe не удался (попытка %s/5): %s", attempt, me.get("description"))
         time.sleep(3)
     if not me.get("ok"):
+        reason = str(me.get("description") or "нет ответа от Telegram")
+        set_meta("bot_error", f"getMe: {reason}")
         if IS_HOSTED:
             print("❌ Telegram не принял BOT_TOKEN. Railway → Variables → BOT_TOKEN (токен от @BotFather), затем Redeploy.")
         else:
             print("Не удалось подключиться к Telegram. Проверь токен в .env и интернет.")
         sys.exit(1)
+    set_meta("bot_error", "")
     log.info("Бот запущен: @%s", me["result"]["username"])
     set_meta("bot_started_at", int(time.time()))
     set_meta("bot_username", me["result"]["username"])
