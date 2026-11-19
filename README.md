@@ -113,6 +113,35 @@ python app.py
 - локально без Telegram работает запасной вариант «первый пользователь»
   (удобно для отладки в обычном браузере).
 
+### 7. Диагностика: жив ли бот
+
+`GET /api/health` отдаёт метку сборки и пульс бота:
+
+```json
+{"ok": true, "build": "2026-11-19.1",
+ "bot": {"alive": true, "age_seconds": 12, "username": "turtlelingo_bot"},
+ "users": 3}
+```
+
+- `bot.alive = false` дольше 90 секунд → бот не опрашивает Telegram
+  (нет `BOT_TOKEN`, конфликт двух экземпляров или сервис упал) — смотреть Logs;
+- `build` — если на хостинге старая метка, деплой не доехал: Deployments → Redeploy;
+- `/api/health` доступен без подписи Telegram (это только состояние, без личных данных).
+
+### 8. Прогресс и Volume
+
+База должна лежать на Volume (`/data/turtlelingo.db`). Если `DB_PATH` забыт,
+`start.sh` и `settings.py` сами берут `/data/turtlelingo.db`, когда папка `/data`
+существует, — иначе прогресс обнулялся бы при каждом перезапуске контейнера.
+
+### 9. После 200 слов
+
+Всего в словаре 199 слов (см. `/api/health` → `users`, в профиле — `N / 199`).
+Когда новых слов не остаётся, уроки не заканчиваются: приложение и бот
+переходят в режим повторения — берут уже изученные слова, добавляют грамматику
+и продолжают начислять XP. Новых слов при этом не появляется, «финального»
+экрана нет.
+
 ### Локально
 
 Всё как раньше: `python app.py`, `python bot.py` — `settings.py` по умолчанию
@@ -125,6 +154,8 @@ python app.py
 | `❌ BOT_TOKEN не задан` | нет переменной `BOT_TOKEN` | Variables → `BOT_TOKEN=<токен>` → Redeploy. `.env` на сервере не нужен и в git его класть нельзя |
 | `Не найден BOT_TOKEN` (старый текст) | то же самое | то же самое |
 | `⚠️ DB_PATH не задан` | нет Volume | Volumes → Add Volume, Mount Path `/data`; Variables → `DB_PATH=/data/turtlelingo.db` |
+| Прогресс обнуляется после рестарта | база не на Volume | проверить `/api/health` → `build`; Volumes → Mount Path `/data`; `DB_PATH=/data/turtlelingo.db` |
+| Бот молчит, но сайт открывается | бот не опрашивает Telegram | `/api/health` → `bot.alive`; Logs на `409` (два экземпляра) или `401` (токен) |
 | `Application failed to respond` | сервис не слушает `PORT` | проверить, что Start Command = `bash start.sh` (из `railway.json`) |
 | Кнопка WebApp ведёт на мёртвый `*.lhr.life` | не задан `WEBAPP_URL` | Variables → `WEBAPP_URL=https://<домен>` → Redeploy |
 | `bot: 401 Unauthorized` | токен отозван/с опечаткой | перевыпустить у `@BotFather`, обновить `BOT_TOKEN` |

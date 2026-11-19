@@ -19,6 +19,12 @@ fi
 
 if [ -n "${DB_PATH:-}" ]; then
   echo "   DB_PATH=${DB_PATH}"
+elif [ -d /data ]; then
+  # Volume уже подключён, но переменную забыли — берём постоянный путь сами,
+  # иначе прогресс стирается при каждом перезапуске контейнера.
+  export DB_PATH=/data/turtlelingo.db
+  echo "   DB_PATH не задан, но найден Volume /data — использую ${DB_PATH}"
+  echo "   (лучше явно: Variables → DB_PATH=/data/turtlelingo.db)"
 elif [ -n "${RAILWAY_ENVIRONMENT:-}" ]; then
   echo "⚠️ DB_PATH не задан: база ляжет внутрь контейнера и сотрётся при следующем деплое."
   echo "   Лечится так: Service → Volumes → Add Volume, Mount Path = /data,"

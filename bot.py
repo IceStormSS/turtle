@@ -106,8 +106,21 @@ db.executescript(
         key TEXT,
         PRIMARY KEY(user_id, key)
     );
+    CREATE TABLE IF NOT EXISTS meta(
+        key TEXT PRIMARY KEY,
+        value TEXT
+    );
     """
 )
+
+
+def set_meta(key, value):
+    """Служебные отметки (например, пульс бота) — видны и веб-части."""
+    try:
+        with db:
+            db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)", (key, str(value)))
+    except Exception:
+        log.warning("Не удалось записать meta %s", key)
 
 
 def ensure_user(uid, name="Друг"):
@@ -133,14 +146,23 @@ def get_webapp_url():
     return WEBAPP_URL
 
 
-def get_menu_keyboard():
+def get_menu_keyboard(uid=None):
     url = get_webapp_url()
     keyboard = []
     if url:
         # Кнопка открытия Mini App прямо внутри Telegram с иконкой WebApp
         keyboard.append([{"text": "📱 Открыть приложение", "web_app": {"url": url}}])
     keyboard.append([{"text": BTN_LEARN}, {"text": BTN_PROFILE}])
-    keyboard.append([{"text": BTN_TEST}])
+    # Тест уровня нужен только тем, кто его ещё не проходил
+    tested = 0
+    if uid is not None:
+        try:
+            row = db.execute("SELECT tested FROM users WHERE id=?", (uid,)).fetchone()
+            tested = row["tested"] if row else 0
+        except Exception:
+            tested = 0
+    if not tested:
+        keyboard.append([{"text": BTN_TEST}])
     return {"keyboard": keyboard, "resize_keyboard": True}
 
 
@@ -248,7 +270,7 @@ sessions = {}
 
 
 def expired(chat_id):
-    send(chat_id, "Этот урок уже закрыт. Нажми «🐢 Учиться», чтобы начать заново.", get_menu_keyboard())
+    send(chat_id, "Этот урок уже закрыт. Нажми «🐢 Учиться», чтобы начать заново.", get_menu_keyboard(chat_id))
 
 
 # ---------------------------------------------------------------- профиль
@@ -267,7 +289,8 @@ def show_profile(u, chat_id):
     if url:
         rows.append([{"text": "📱 Открыть приложение", "web_app": {"url": url}}])
     rows.append([{"text": "✏️ Выбрать уровень вручную", "callback_data": "choose_lvl"}])
-    rows.append([{"text": "🧪 Пройти тест уровня", "callback_data": "test"}])
+    if not u["tested"]:
+        rows.append([{"text": "🧪 Пройти тест уровня", "callback_data": "test"}])
     send(chat_id, text, {"inline_keyboard": rows})
 
 
@@ -467,7 +490,7 @@ def finish_test(uid, chat_id):
         f"{plan}\n\n"
         f"<i>Ты всегда можешь изменить уровень в любой момент в «👤 Профиль».</i>"
     )
-    send(chat_id, text, get_menu_keyboard())
+    send(chat_id, text, get_menu_keyboard(uid))
 
 
 # ---------------------------------------------------------------- урок
@@ -701,7 +724,7 @@ def on_message(m):
                 rows = []
                 if url:
                     rows.append([{"text": "📱 Открыть приложение", "web_app": {"url": url}}])
-                rows.append([{"text": "🧪 Тест уровня", "callback_data": "test"}, {"text": "🐢 Учиться", "callback_data": "more"}])
+                rows.append([{"text": "🐢 Учиться", "callback_data": "more"}])
                 rows.append([{"text": "👤 Профиль", "callback_data": "profile_btn"}])
                 send(
                     chat_id,
@@ -719,7 +742,7 @@ def on_message(m):
         elif text.startswith("/level"):
             show_level_selector(chat_id)
         else:
-            send(chat_id, "Выбирай действие кнопками внизу 👇", get_menu_keyboard())
+            send(chat_id, "Выбирай действие кнопками внизу 👇", get_menu_keyboard(uid))
         return
 
     # Если пользователь сейчас проходит тест или урок — проверяем ввод от руки:
@@ -732,7 +755,7 @@ def on_message(m):
             answer_lesson(uid, chat_id, text)
             return
 
-    send(chat_id, "Выбирай действие кнопками внизу 👇", get_menu_keyboard())
+    send(chat_id, "Выбирай действие кнопками внизу 👇", get_menu_keyboard(uid))
 
 
 def on_callback(cb):
@@ -747,7 +770,7 @@ def on_callback(cb):
         with db:
             db.execute("UPDATE users SET level=0, pool=0, tested=1 WHERE id=?", (uid,))
         edit(chat_id, mid, "Отлично! Начнём с самого начала — это совсем не страшно 🐣")
-        send(chat_id, "Нажми «🐢 Учиться», и я дам первые слова!", get_menu_keyboard())
+        send(chat_id, "Нажми «🐢 Учиться», и я дам первые слова!", get_menu_keyboard(uid))
     elif data == "profile_btn":
         show_profile(u, chat_id)
     elif data == "test":
@@ -759,7 +782,7 @@ def on_callback(cb):
         pool = 0 if lvl == 0 else min(lvl + 1, 4)
         with db:
             db.execute("UPDATE users SET level=?, pool=?, tested=1 WHERE id=?", (lvl, pool, uid))
-        send(chat_id, f"🎯 Твой уровень успешно обновлён на: <b>{LEVEL_NAMES[lvl]}</b>!", get_menu_keyboard())
+        send(chat_id, f"🎯 Твой уровень успешно обновлён на: <b>{LEVEL_NAMES[lvl]}</b>!", get_menu_keyboard(uid))
     elif data in ("more",):
         start_lesson(ensure_user(uid), chat_id)
     elif data in ("go", "next"):
@@ -781,7 +804,13 @@ def on_callback(cb):
 
 
 def main():
-    me = api("getMe")
+    me = {}
+    for attempt in range(1, 6):
+        me = api("getMe")
+        if me.get("ok"):
+            break
+        log.warning("getMe не удался (попытка %s/5): %s", attempt, me.get("description"))
+        time.sleep(3)
     if not me.get("ok"):
         if IS_HOSTED:
             print("❌ Telegram не принял BOT_TOKEN. Railway → Variables → BOT_TOKEN (токен от @BotFather), затем Redeploy.")
@@ -789,6 +818,15 @@ def main():
             print("Не удалось подключиться к Telegram. Проверь токен в .env и интернет.")
         sys.exit(1)
     log.info("Бот запущен: @%s", me["result"]["username"])
+    set_meta("bot_started_at", int(time.time()))
+    set_meta("bot_username", me["result"]["username"])
+    set_meta("db_path", DB_PATH)
+
+    # Если у бота когда-то был выставлен webhook, getUpdates отвечает 409.
+    # Снимаем его, чтобы long polling работал всегда.
+    wh = api("deleteWebhook", drop_pending_updates=False)
+    if not wh.get("ok"):
+        log.warning("deleteWebhook: %s", wh.get("description"))
 
     # 1. Локальный веб-сервер поднимаем только при локальном запуске.
     # На хостинге app.py работает отдельным процессом (наружу смотрит платформа).
@@ -834,22 +872,38 @@ def main():
 
     offset = None
     while True:
-        params = {"timeout": 30, "allowed_updates": ["message", "callback_query"]}
-        if offset:
-            params["offset"] = offset
-        data = api("getUpdates", **params)
-        if not data.get("ok"):
+        try:
+            params = {"timeout": 30, "allowed_updates": ["message", "callback_query"]}
+            if offset:
+                params["offset"] = offset
+            data = api("getUpdates", **params)
+            if not data.get("ok"):
+                desc = str(data.get("description", ""))
+                if "409" in desc or "Conflict" in desc.lower():
+                    log.error(
+                        "Telegram: сообщения уже получает другой экземпляр бота (409). "
+                        "Останови лишний сервис/старый деплой — этот продолжит работу."
+                    )
+                time.sleep(3)
+                continue
+            # Пульс: веб-часть через /api/health показывает, что бот жив
+            set_meta("bot_heartbeat", int(time.time()))
+            for upd in data["result"]:
+                offset = upd["update_id"] + 1
+                try:
+                    if "message" in upd:
+                        on_message(upd["message"])
+                    elif "callback_query" in upd:
+                        on_callback(upd["callback_query"])
+                except Exception:
+                    log.exception("Ошибка при обработке обновления")
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            # Сетевой сбой не должен убивать процесс: Railway не всегда
+            # перезапускает контейнер, и бот оставался «молчащим».
+            log.exception("Сбой цикла получения сообщений, продолжаю через 3 с")
             time.sleep(3)
-            continue
-        for upd in data["result"]:
-            offset = upd["update_id"] + 1
-            try:
-                if "message" in upd:
-                    on_message(upd["message"])
-                elif "callback_query" in upd:
-                    on_callback(upd["callback_query"])
-            except Exception:
-                log.exception("Ошибка при обработке обновления")
 
 
 if __name__ == "__main__":

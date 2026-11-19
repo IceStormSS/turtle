@@ -67,7 +67,14 @@ HOST = env("HOST") or ("0.0.0.0" if (IS_HOSTED or env("PORT")) else "127.0.0.1")
 PORT = int(env("PORT") or "5000")
 
 # DB_PATH позволяет вынести базу на постоянный Volume (например /data/turtlelingo.db).
-DB_PATH = env("DB_PATH") or os.path.join(BASE_DIR, "turtlelingo.db")
+DB_PATH = env("DB_PATH")
+if not DB_PATH:
+    # На хостинге с подключённым Volume база должна лежать на нём,
+    # иначе прогресс стирается при каждом перезапуске контейнера.
+    if IS_HOSTED and os.path.isdir("/data"):
+        DB_PATH = "/data/turtlelingo.db"
+    else:
+        DB_PATH = os.path.join(BASE_DIR, "turtlelingo.db")
 
 # Туннель (localhost.run) нужен только локально. На хостинге есть свой HTTPS-домен.
 DISABLE_TUNNEL = IS_HOSTED or env("DISABLE_TUNNEL").lower() in ("1", "true", "yes")

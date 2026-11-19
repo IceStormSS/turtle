@@ -1,6 +1,7 @@
 /* ========================================================
    TurtleLingo — Interactive Frontend Application Logic
    ======================================================== */
+console.log("TurtleLingo build 2026-11-19.1");
 
 // Глобальное состояние
 const state = {
@@ -48,6 +49,40 @@ window.fetch = (url, opts = {}) => {
   }
   return _fetch(url, opts);
 };
+
+// ---------------------------------------------------------------- Кэш прогресса
+// Пока сервер отвечает, показываем последние известные цифры, чтобы прогресс
+// не «мигал нулями» при каждом открытии приложения.
+const USER_CACHE_KEY = "tl:user:" + (tgUser?.id || "local");
+
+function loadCachedUser() {
+  try {
+    const raw = localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return;
+    const cached = JSON.parse(raw);
+    if (cached && typeof cached === "object") {
+      state.user = { ...state.user, ...cached };
+    }
+  } catch (e) {
+    /* кэш не критичен */
+  }
+}
+
+function saveCachedUser() {
+  try {
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(state.user));
+  } catch (e) {
+    /* приватный режим и подобное */
+  }
+}
+
+// Тест уровня проходят один раз — после этого кнопки теста не нужны
+function updateTestVisibility() {
+  const hide = !!state.user.tested;
+  document.querySelectorAll("[data-hide-if-tested]").forEach((el) => {
+    el.style.display = hide ? "none" : "";
+  });
+}
 
 const LEVEL_NAMES = {
   0: "A0 — Начальный 🥚",
@@ -190,6 +225,9 @@ function updateHeaderStats() {
     const b = document.getElementById(`btn-lvl-${i}`);
     if (b) b.classList.toggle("active", state.user.level === i);
   }
+
+  updateTestVisibility();
+  saveCachedUser();
 }
 
 // ---------------------------------------------------------------- ТЕСТ УРОВНЯ
@@ -984,6 +1022,8 @@ function initTelegramWebApp() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  loadCachedUser();
+  updateHeaderStats();
   initTelegramWebApp();
   fetchUser();
 });

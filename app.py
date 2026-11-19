@@ -38,6 +38,9 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("turtlelingo_web")
 
+# Метка сборки — по ней видно, доехал ли новый код до хостинга (/api/health)
+BUILD = "2026-11-19.1"
+
 # Токен бота нужен для проверки подписи initData из Telegram Mini App
 BOT_TOKEN = env("BOT_TOKEN")
 
@@ -375,6 +378,8 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(content)))
+                # После деплоя Telegram-вебвью не должен показывать старую версию
+                self.send_header("Cache-Control", "no-cache, must-revalidate")
                 self.end_headers()
                 self.wfile.write(content)
             except Exception as e:
@@ -401,6 +406,7 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", mime)
                 self.send_header("Content-Length", str(len(content)))
+                self.send_header("Cache-Control", "no-cache, must-revalidate")
                 self.end_headers()
                 self.wfile.write(content)
                 return
@@ -435,6 +441,31 @@ class TurtleHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/api/grammar":
             self.send_json(GRAMMAR_TOPICS)
+            return
+
+        elif path == "/api/health":
+            # Диагностика: жив ли бот (он пишет пульс в ту же базу)
+            info = {"ok": True, "build": BUILD, "bot": {"alive": False, "last_seen": None, "age_seconds": None, "username": None}}
+            try:
+                rows = {
+                    r["key"]: r["value"]
+                    for r in db.execute("SELECT key, value FROM meta WHERE key LIKE 'bot_%'")
+                }
+                last = int(rows.get("bot_heartbeat", 0) or 0)
+                age = int(time.time() - last) if last else None
+                info["bot"] = {
+                    "alive": bool(age is not None and age < 90),
+                    "last_seen": last or None,
+                    "age_seconds": age,
+                    "username": rows.get("bot_username"),
+                }
+            except Exception:
+                pass
+            try:
+                info["users"] = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+            except Exception:
+                info["users"] = None
+            self.send_json(info)
             return
 
         self.send_error(404, "Endpoint not found")

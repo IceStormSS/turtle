@@ -56,7 +56,7 @@
           <span class="nav-icon">🐢</span>
           <span class="nav-label">Учиться</span>
         </button>
-        <button class="nav-item" data-tab="test" onclick="navigate('test')">
+        <button class="nav-item" data-tab="test" data-hide-if-tested onclick="navigate('test')">
           <span class="nav-icon">🧪</span>
           <span class="nav-label">Тест уровня</span>
         </button>
@@ -98,7 +98,7 @@
               <button class="btn btn-primary btn-lg" onclick="startLesson()">
                 🚀 Начать урок
               </button>
-              <button class="btn btn-secondary" onclick="navigate('test')">
+              <button class="btn btn-secondary" data-hide-if-tested onclick="navigate('test')">
                 🧪 Пройти тест уровня
               </button>
             </div>
