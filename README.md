@@ -65,12 +65,20 @@ python app.py
 ### 1. Сервис
 
 1. [railway.app](https://railway.app) → **New Project → Deploy from GitHub repo** → этот репозиторий.
-2. Railway сам поставит зависимости из `requirements.txt` и запустит `bash start.sh` (из `railway.json`).
+2. **Service → Settings → Deploy → Custom Start Command = `bash start.sh`** и нажать **Deploy Changes**.
+3. **Service → Settings → Source → Auto deploy** → **Enable** (иначе новые коммиты не выкатываются сами).
 
+> ⚠️ **`railway.json` в Railway больше не применяется.** Config-as-code объявлен deprecated,
+> поэтому Start Command нужно прописать руками в настройках сервиса. Если оставить
+> автоопределение, Railway запустит только `python app.py` — веб заработает, а **бот молчит**
+> (ровно так и выглядит «пишу /start — ничего»). Признак: в Console видно только
+> `/proc/1 python app.py`, а процесса `bot.py` нет.
+>
 > **Почему один сервис, а не два.** Бот и веб-приложение пишут в **один** `turtlelingo.db`.
 > Volume в Railway подключается только к одному сервису, поэтому два отдельных сервиса
 > получили бы две разные базы — прогресс бы расходился. `start.sh` поднимает оба процесса
-> в одном контейнере, база общая, при падении любого процесса сервис перезапускается целиком.
+> в одном контейнере, база общая. Если падает бот — он перезапускается сам, а веб продолжает
+> работать (деплой не считается упавшим); если падает веб — сервис перезапускается целиком.
 
 ### 2. Volume для базы (иначе прогресс стирается при каждом деплое)
 
@@ -159,7 +167,9 @@ python app.py
 | `⚠️ DB_PATH не задан` | нет Volume | Volumes → Add Volume, Mount Path `/data`; Variables → `DB_PATH=/data/turtlelingo.db` |
 | Прогресс обнуляется после рестарта | база не на Volume | проверить `/api/health` → `build`; Volumes → Mount Path `/data`; `DB_PATH=/data/turtlelingo.db` |
 | Бот молчит, но сайт открывается | бот не опрашивает Telegram | `/api/health` → `bot.alive`; Logs на `409` (два экземпляра) или `401` (токен) |
-| `Application failed to respond` | сервис не слушает `PORT` | проверить, что Start Command = `bash start.sh` (из `railway.json`) |
+| Бот молчит, в Console только `python app.py` | Start Command не задан (автоопределение) | Settings → Deploy → Custom Start Command = `bash start.sh` → Deploy Changes |
+| Сайт отдаёт старую версию после `git push` | выключен Auto deploy | Settings → Source → Auto deploy → Enable, затем Deployments → Redeploy |
+| `Application failed to respond` | сервис не слушает `PORT` | проверить, что Start Command = `bash start.sh` |
 | Кнопка WebApp ведёт на мёртвый `*.lhr.life` | не задан `WEBAPP_URL` | Variables → `WEBAPP_URL=https://<домен>` → Redeploy |
 | `bot: 401 Unauthorized` | токен отозван/с опечаткой | перевыпустить у `@BotFather`, обновить `BOT_TOKEN` |
 | Веб: `401 unauthorized` / «Открой приложение из Telegram» | страница открыта в обычном браузере или без initData | открывать кнопкой **Приложение** внутри Telegram; проверить `BOT_TOKEN` |
